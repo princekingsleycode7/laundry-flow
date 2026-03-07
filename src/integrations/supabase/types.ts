@@ -14,7 +14,109 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      customers: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          phone: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          phone?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          phone?: string | null
+        }
+        Relationships: []
+      }
+      order_timeline: {
+        Row: {
+          created_at: string
+          id: string
+          order_id: string
+          status: Database["public"]["Enums"]["order_status"]
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          order_id: string
+          status: Database["public"]["Enums"]["order_status"]
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          order_id?: string
+          status?: Database["public"]["Enums"]["order_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_timeline_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          created_at: string
+          customer_id: string
+          fulfillment_type: Database["public"]["Enums"]["fulfillment_type"]
+          id: string
+          order_number: string
+          price: number
+          service_type: Database["public"]["Enums"]["order_service_type"]
+          special_instructions: string | null
+          status: Database["public"]["Enums"]["order_status"]
+          updated_at: string
+          weight: number
+          weight_unit: Database["public"]["Enums"]["weight_unit"]
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          fulfillment_type?: Database["public"]["Enums"]["fulfillment_type"]
+          id?: string
+          order_number: string
+          price?: number
+          service_type?: Database["public"]["Enums"]["order_service_type"]
+          special_instructions?: string | null
+          status?: Database["public"]["Enums"]["order_status"]
+          updated_at?: string
+          weight?: number
+          weight_unit?: Database["public"]["Enums"]["weight_unit"]
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          fulfillment_type?: Database["public"]["Enums"]["fulfillment_type"]
+          id?: string
+          order_number?: string
+          price?: number
+          service_type?: Database["public"]["Enums"]["order_service_type"]
+          special_instructions?: string | null
+          status?: Database["public"]["Enums"]["order_status"]
+          updated_at?: string
+          weight?: number
+          weight_unit?: Database["public"]["Enums"]["weight_unit"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +125,10 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      fulfillment_type: "pickup" | "delivery"
+      order_service_type: "wash_and_fold" | "dry_clean" | "ironing"
+      order_status: "pending" | "washing" | "drying" | "ready" | "picked_up"
+      weight_unit: "lbs" | "kg"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +255,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      fulfillment_type: ["pickup", "delivery"],
+      order_service_type: ["wash_and_fold", "dry_clean", "ironing"],
+      order_status: ["pending", "washing", "drying", "ready", "picked_up"],
+      weight_unit: ["lbs", "kg"],
+    },
   },
 } as const
