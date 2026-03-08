@@ -21,13 +21,12 @@ const STATUS_LABELS: Record<string, string> = {
   picked_up: "Picked Up",
 };
 
-// Tool definitions for AI function calling
 const tools = [
   {
     type: "function",
     function: {
       name: "get_customer_orders",
-      description: "Get all orders for a customer by their phone number. Returns order number, service type, status, price, and date.",
+      description: "Get all orders for a customer by their phone number.",
       parameters: {
         type: "object",
         properties: {
@@ -42,7 +41,7 @@ const tools = [
     type: "function",
     function: {
       name: "get_order_details",
-      description: "Get full details of a specific order by order number. Returns timeline, special instructions, weight, price breakdown.",
+      description: "Get full details of a specific order by order number.",
       parameters: {
         type: "object",
         properties: {
@@ -70,16 +69,10 @@ const tools = [
   },
 ];
 
-// Execute tool calls against the database
-async function executeTool(
-  supabase: any,
-  toolName: string,
-  args: any
-): Promise<string> {
+async function executeTool(supabase: any, toolName: string, args: any): Promise<string> {
   try {
     if (toolName === "get_customer_orders") {
       const phone = args.phone.trim();
-      // Find customer by phone (try with and without +)
       const { data: customers } = await supabase
         .from("customers")
         .select("id, name, phone")
@@ -100,16 +93,16 @@ async function executeTool(
         return JSON.stringify({ result: "No orders found for this customer." });
       }
 
-      const formatted = orders.map((o: any) => ({
-        order_number: o.order_number,
-        service: SERVICE_LABELS[o.service_type] || o.service_type,
-        status: STATUS_LABELS[o.status] || o.status,
-        price: `$${Number(o.price).toFixed(2)}`,
-        weight: `${o.weight} ${o.weight_unit}`,
-        date: o.created_at,
-      }));
-
-      return JSON.stringify({ orders: formatted });
+      return JSON.stringify({
+        orders: orders.map((o: any) => ({
+          order_number: o.order_number,
+          service: SERVICE_LABELS[o.service_type] || o.service_type,
+          status: STATUS_LABELS[o.status] || o.status,
+          price: `$${Number(o.price).toFixed(2)}`,
+          weight: `${o.weight} ${o.weight_unit}`,
+          date: o.created_at,
+        })),
+      });
     }
 
     if (toolName === "get_order_details") {
@@ -119,9 +112,7 @@ async function executeTool(
         .eq("order_number", args.order_number)
         .single();
 
-      if (!order) {
-        return JSON.stringify({ result: "Order not found." });
-      }
+      if (!order) return JSON.stringify({ result: "Order not found." });
 
       const { data: timeline } = await supabase
         .from("order_timeline")
@@ -152,9 +143,7 @@ async function executeTool(
         .eq("order_number", args.order_number)
         .single();
 
-      if (!order) {
-        return JSON.stringify({ result: "Order not found." });
-      }
+      if (!order) return JSON.stringify({ result: "Order not found." });
 
       return JSON.stringify({
         order_number: order.order_number,
@@ -190,14 +179,19 @@ serve(async (req) => {
 
     // Parse Twilio webhook (form-encoded)
     const formData = await req.formData();
-    const fromPhone = (formData.get("From") as string) || "";
+    const rawFrom = (formData.get("From") as string) || "";
     const inboundBody = (formData.get("Body") as string) || "";
 
-    if (!fromPhone || !inboundBody) {
+    if (!rawFrom || !inboundBody) {
       return new Response("<Response><Message>Invalid request</Message></Response>", {
         headers: { ...corsHeaders, "Content-Type": "text/xml" },
       });
     }
+
+    // Strip "whatsapp:" prefix to get the plain phone number
+    const fromPhone = rawFrom.replace(/^whatsapp:/, "");
+    const whatsappFrom = rawFrom.startsWith("whatsapp:") ? rawFrom : `whatsapp:${rawFrom}`;
+    const whatsappTo = `whatsapp:${TWILIO_PHONE_NUMBER}`;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -210,9 +204,8 @@ serve(async (req) => {
 
     const customer = customers?.[0];
     if (!customer) {
-      // Unknown customer — reply with a generic message
       const replyMsg = "Hi! We couldn't find your account. Please contact us at the store for assistance.";
-      await sendTwilioSms(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, fromPhone, replyMsg);
+      await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, whatsappTo, whatsappFrom, replyMsg);
       return new Response("<Response></Response>", {
         headers: { ...corsHeaders, "Content-Type": "text/xml" },
       });
@@ -224,7 +217,7 @@ serve(async (req) => {
       phone: fromPhone,
       role: "customer",
       message: inboundBody,
-      channel: "sms",
+      channel: "whatsapp",
     });
 
     // Load recent conversation history (last 20 messages)
@@ -235,14 +228,13 @@ serve(async (req) => {
       .order("created_at", { ascending: true })
       .limit(20);
 
-    // Build messages for AI
     const conversationMessages = (history || []).map((h: any) => ({
       role: h.role === "customer" ? "user" : "assistant",
       content: h.message,
     }));
 
-    const systemPrompt = `You are a friendly SMS assistant for LaundryOps, a laundry service business. 
-The customer texting you is ${customer.name} (phone: ${fromPhone}).
+    const systemPrompt = `You are a friendly WhatsApp assistant for LaundryOps, a laundry service business. 
+The customer messaging you is ${customer.name} (phone: ${fromPhone}).
 
 RULES:
 - Keep responses SHORT (under 160 characters when possible, max 320 chars)
@@ -254,7 +246,6 @@ RULES:
 - Do not use emojis
 - Return ONLY the message text, nothing else`;
 
-    // Call AI with tools
     let aiMessages: any[] = [
       { role: "system", content: systemPrompt },
       ...conversationMessages,
@@ -296,34 +287,27 @@ RULES:
 
       const message = choice.message;
 
-      // If AI wants to call tools
       if (message.tool_calls && message.tool_calls.length > 0) {
-        // Add assistant message with tool calls to context
         aiMessages.push(message);
 
-        // Execute each tool call
         for (const toolCall of message.tool_calls) {
           const toolName = toolCall.function.name;
           const toolArgs = JSON.parse(toolCall.function.arguments);
 
-          // Inject the customer phone for get_customer_orders
           if (toolName === "get_customer_orders" && !toolArgs.phone) {
             toolArgs.phone = fromPhone;
           }
 
           const result = await executeTool(supabase, toolName, toolArgs);
-
           aiMessages.push({
             role: "tool",
             tool_call_id: toolCall.id,
             content: result,
           });
         }
-        // Loop back to get AI's final response with tool results
         continue;
       }
 
-      // AI returned a text response
       finalResponse = message.content?.trim() || "Sorry, I couldn't process your request.";
       break;
     }
@@ -334,25 +318,24 @@ RULES:
       phone: fromPhone,
       role: "assistant",
       message: finalResponse,
-      channel: "sms",
+      channel: "whatsapp",
     });
 
-    // Send SMS reply via Twilio
-    await sendTwilioSms(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, fromPhone, finalResponse);
+    // Send WhatsApp reply via Twilio
+    await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, `whatsapp:${TWILIO_PHONE_NUMBER}`, whatsappFrom, finalResponse);
 
-    // Return empty TwiML (we sent the reply via API)
     return new Response("<Response></Response>", {
       headers: { ...corsHeaders, "Content-Type": "text/xml" },
     });
   } catch (e) {
-    console.error("sms-webhook error:", e);
+    console.error("whatsapp-webhook error:", e);
     return new Response("<Response><Message>Something went wrong. Please try again.</Message></Response>", {
       headers: { ...corsHeaders, "Content-Type": "text/xml" },
     });
   }
 });
 
-async function sendTwilioSms(
+async function sendTwilioMessage(
   accountSid: string,
   authToken: string,
   from: string,
