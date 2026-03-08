@@ -224,6 +224,7 @@ serve(async (req) => {
       phone: fromPhone,
       role: "customer",
       message: inboundBody,
+      channel: "sms",
     });
 
     // Load recent conversation history (last 20 messages)
