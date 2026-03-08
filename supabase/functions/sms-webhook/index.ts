@@ -21,6 +21,7 @@ const STATUS_LABELS: Record<string, string> = {
   picked_up: "Picked Up",
 };
 
+// Tool definitions for AI function calling
 const tools = [
   {
     type: "function",
@@ -69,10 +70,16 @@ const tools = [
   },
 ];
 
-async function executeTool(supabase: any, toolName: string, args: any): Promise<string> {
+// Execute tool calls against the database
+async function executeTool(
+  supabase: any,
+  toolName: string,
+  args: any
+): Promise<string> {
   try {
     if (toolName === "get_customer_orders") {
       const phone = args.phone.trim();
+      // Find customer by phone (try with and without +)
       const { data: customers } = await supabase
         .from("customers")
         .select("id, name, phone")
@@ -112,7 +119,9 @@ async function executeTool(supabase: any, toolName: string, args: any): Promise<
         .eq("order_number", args.order_number)
         .single();
 
-      if (!order) return JSON.stringify({ result: "Order not found." });
+      if (!order) {
+        return JSON.stringify({ result: "Order not found." });
+      }
 
       const { data: timeline } = await supabase
         .from("order_timeline")
@@ -143,7 +152,9 @@ async function executeTool(supabase: any, toolName: string, args: any): Promise<
         .eq("order_number", args.order_number)
         .single();
 
-      if (!order) return JSON.stringify({ result: "Order not found." });
+      if (!order) {
+        return JSON.stringify({ result: "Order not found." });
+      }
 
       return JSON.stringify({
         order_number: order.order_number,
@@ -177,14 +188,14 @@ serve(async (req) => {
     const inboundBody = (formData.get("Body") as string) || "";
 
     if (!fromPhone || !inboundBody) {
-      return new Response(twimlMessageResponse("Invalid request"), {
+      return new Response("<Response><Message>Invalid request</Message></Response>", {
         headers: { ...corsHeaders, "Content-Type": "text/xml" },
       });
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Find customer by phone — try multiple formats to be safe
+    // Find customer by phone
     const normalizedPhone = fromPhone.replace(/^\+/, "");
     const { data: customers } = await supabase
       .from("customers")
@@ -192,17 +203,14 @@ serve(async (req) => {
       .or(`phone.eq.${fromPhone},phone.eq.${normalizedPhone},phone.eq.+${normalizedPhone}`);
 
     const customer = customers?.[0];
-
-    // ✅ FIX: replyMsg was undefined before — now defined explicitly
     if (!customer) {
-      const unknownReply =
-        "Sorry, we don't have your number on file. Please visit us in store or call us to register.";
-      return new Response(twimlMessageResponse(unknownReply), {
+      // Unknown customer — reply with a generic message
+      return new Response(twimlMessageResponse(replyMsg), {
         headers: { ...corsHeaders, "Content-Type": "text/xml" },
       });
     }
 
-    // Save inbound message to conversation history
+    // Save inbound message
     await supabase.from("sms_conversations").insert({
       customer_id: customer.id,
       phone: fromPhone,
@@ -211,7 +219,7 @@ serve(async (req) => {
       channel: "sms",
     });
 
-    // Load recent conversation history (last 20 messages for context)
+    // Load recent conversation history (last 20 messages)
     const { data: history } = await supabase
       .from("sms_conversations")
       .select("role, message, created_at")
@@ -225,7 +233,7 @@ serve(async (req) => {
       content: h.message,
     }));
 
-    const systemPrompt = `You are a friendly SMS assistant for LaundryOps, a laundry service business.
+    const systemPrompt = `You are a friendly SMS assistant for LaundryOps, a laundry service business. 
 The customer texting you is ${customer.name} (phone: ${fromPhone}).
 
 RULES:
@@ -238,6 +246,7 @@ RULES:
 - Do not use emojis
 - Return ONLY the message text, nothing else`;
 
+    // Call AI with tools
     let aiMessages: any[] = [
       { role: "system", content: systemPrompt },
       ...conversationMessages,
@@ -257,7 +266,7 @@ RULES:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-lite",
+          model: "google/gemini-3-flash-preview",
           messages: aiMessages,
           tools,
         }),
@@ -265,8 +274,7 @@ RULES:
 
       if (!aiResponse.ok) {
         console.error("AI gateway error:", aiResponse.status, await aiResponse.text());
-        finalResponse =
-          "Sorry, I'm having trouble right now. Please try again later or visit us in store.";
+        finalResponse = "Sorry, I'm having trouble right now. Please try again later or visit us in store.";
         break;
       }
 
@@ -280,36 +288,39 @@ RULES:
 
       const message = choice.message;
 
-      // AI wants to call a tool — execute and loop back
+      // If AI wants to call tools
       if (message.tool_calls && message.tool_calls.length > 0) {
+        // Add assistant message with tool calls to context
         aiMessages.push(message);
 
+        // Execute each tool call
         for (const toolCall of message.tool_calls) {
           const toolName = toolCall.function.name;
           const toolArgs = JSON.parse(toolCall.function.arguments);
 
-          // Auto-inject customer phone for orders lookup
+          // Inject the customer phone for get_customer_orders
           if (toolName === "get_customer_orders" && !toolArgs.phone) {
             toolArgs.phone = fromPhone;
           }
 
           const result = await executeTool(supabase, toolName, toolArgs);
+
           aiMessages.push({
             role: "tool",
             tool_call_id: toolCall.id,
             content: result,
           });
         }
+        // Loop back to get AI's final response with tool results
         continue;
       }
 
-      // Got a final text response
-      finalResponse =
-        message.content?.trim() || "Sorry, I couldn't process your request.";
+      // AI returned a text response
+      finalResponse = message.content?.trim() || "Sorry, I couldn't process your request.";
       break;
     }
 
-    // Save assistant reply to conversation history
+    // Save assistant response
     await supabase.from("sms_conversations").insert({
       customer_id: customer.id,
       phone: fromPhone,
@@ -318,16 +329,14 @@ RULES:
       channel: "sms",
     });
 
-    // Return TwiML response — Twilio will send this as an SMS reply
     return new Response(twimlMessageResponse(finalResponse), {
       headers: { ...corsHeaders, "Content-Type": "text/xml" },
     });
   } catch (e) {
     console.error("sms-webhook error:", e);
-    return new Response(
-      twimlMessageResponse("Something went wrong. Please try again."),
-      { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
-    );
+    return new Response(twimlMessageResponse("Something went wrong. Please try again."), {
+      headers: { ...corsHeaders, "Content-Type": "text/xml" },
+    });
   }
 });
 
