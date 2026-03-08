@@ -48,10 +48,25 @@ export default function OrdersPage() {
         .update({ status: status as any })
         .eq("id", id);
       if (error) throw error;
+      return { id, status };
     },
-    onSuccess: () => {
+    onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       toast.success("Order status updated");
+
+      // Trigger SMS notification when status becomes "ready"
+      if (result.status === "ready") {
+        try {
+          const { data, error } = await supabase.functions.invoke("notify-order-ready", {
+            body: { order_id: result.id },
+          });
+          if (error) throw error;
+          toast.success("Customer notified via SMS");
+        } catch (e) {
+          console.error("SMS notification failed:", e);
+          toast.error("Failed to send SMS notification");
+        }
+      }
     },
     onError: () => toast.error("Failed to update status"),
   });

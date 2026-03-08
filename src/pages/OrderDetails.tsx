@@ -54,11 +54,25 @@ export default function OrderDetails() {
         .eq("id", id!);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: async (_data, newStatus) => {
       queryClient.invalidateQueries({ queryKey: ["order", id] });
       queryClient.invalidateQueries({ queryKey: ["order-timeline", id] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       toast.success("Status updated");
+
+      // Trigger SMS notification when status becomes "ready"
+      if (newStatus === "ready") {
+        try {
+          const { error } = await supabase.functions.invoke("notify-order-ready", {
+            body: { order_id: id },
+          });
+          if (error) throw error;
+          toast.success("Customer notified via SMS");
+        } catch (e) {
+          console.error("SMS notification failed:", e);
+          toast.error("Failed to send SMS notification");
+        }
+      }
     },
     onError: () => toast.error("Failed to update status"),
   });
