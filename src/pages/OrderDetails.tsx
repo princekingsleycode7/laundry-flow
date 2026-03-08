@@ -205,6 +205,9 @@ export default function OrderDetails() {
           </div>
         </Card>
 
+        {/* SMS Conversation */}
+        <SmsConversation customerId={order.customer_id} />
+
         {/* Actions */}
         {nextStatus && (
           <div className="flex gap-3">
