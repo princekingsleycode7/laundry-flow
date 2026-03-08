@@ -196,9 +196,7 @@ serve(async (req) => {
 
     const customer = customers?.[0];
     if (!customer) {
-      const replyMsg = "Hi! We couldn't find your account. Please contact us at the store for assistance.";
-      await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, whatsappTo, whatsappFrom, replyMsg);
-      return new Response("<Response></Response>", {
+      return new Response(twimlMessageResponse(replyMsg), {
         headers: { ...corsHeaders, "Content-Type": "text/xml" },
       });
     }
