@@ -139,13 +139,55 @@ serve(async (req) => {
         phone: formattedPhone,
         role: "assistant",
         message: smsBody,
+        channel: "sms",
       });
     } catch (logErr) {
       console.error("Failed to log SMS to conversations:", logErr);
     }
 
+    // Also send via WhatsApp if possible
+    let whatsappSid = null;
+    try {
+      const whatsappUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+      const whatsappResponse = await fetch(whatsappUrl, {
+        method: "POST",
+        headers: {
+          Authorization: "Basic " + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          To: `whatsapp:${formattedPhone}`,
+          From: `whatsapp:${TWILIO_PHONE_NUMBER}`,
+          Body: smsBody,
+        }),
+      });
+
+      if (whatsappResponse.ok) {
+        const whatsappData = await whatsappResponse.json();
+        whatsappSid = whatsappData.sid;
+
+        await supabase.from("sms_conversations").insert({
+          order_id: order.id,
+          customer_id: order.customer_id,
+          phone: formattedPhone,
+          role: "assistant",
+          message: smsBody,
+          channel: "whatsapp",
+        });
+      } else {
+        console.log("WhatsApp send skipped (not configured or failed):", await whatsappResponse.text());
+      }
+    } catch (waErr) {
+      console.log("WhatsApp notification skipped:", waErr);
+    }
+
     return new Response(
-      JSON.stringify({ success: true, message_sid: twilioData.sid, sms_body: smsBody }),
+      JSON.stringify({
+        success: true,
+        message_sid: twilioData.sid,
+        whatsapp_sid: whatsappSid,
+        sms_body: smsBody,
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
