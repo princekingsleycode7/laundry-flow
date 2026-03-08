@@ -117,6 +117,51 @@ export type Database = {
           },
         ]
       }
+      sms_conversations: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          message: string
+          order_id: string | null
+          phone: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          message: string
+          order_id?: string | null
+          phone: string
+          role: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          message?: string
+          order_id?: string | null
+          phone?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_conversations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

@@ -131,6 +131,19 @@ serve(async (req) => {
       );
     }
 
+    // Save outgoing SMS to conversation history
+    try {
+      await supabase.from("sms_conversations").insert({
+        order_id: order.id,
+        customer_id: order.customer_id,
+        phone: formattedPhone,
+        role: "assistant",
+        message: smsBody,
+      });
+    } catch (logErr) {
+      console.error("Failed to log SMS to conversations:", logErr);
+    }
+
     return new Response(
       JSON.stringify({ success: true, message_sid: twilioData.sid, sms_body: smsBody }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
