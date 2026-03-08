@@ -179,14 +179,8 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
-    const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
 
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-    if (!TWILIO_ACCOUNT_SID) throw new Error("TWILIO_ACCOUNT_SID is not configured");
-    if (!TWILIO_AUTH_TOKEN) throw new Error("TWILIO_AUTH_TOKEN is not configured");
-    if (!TWILIO_PHONE_NUMBER) throw new Error("TWILIO_PHONE_NUMBER is not configured");
 
     // Parse Twilio webhook (form-encoded)
     const formData = await req.formData();
@@ -211,9 +205,7 @@ serve(async (req) => {
     const customer = customers?.[0];
     if (!customer) {
       // Unknown customer — reply with a generic message
-      const replyMsg = "Hi! We couldn't find your account. Please contact us at the store for assistance.";
-      await sendTwilioSms(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, fromPhone, replyMsg);
-      return new Response("<Response></Response>", {
+      return new Response(twimlMessageResponse(replyMsg), {
         headers: { ...corsHeaders, "Content-Type": "text/xml" },
       });
     }
@@ -337,41 +329,27 @@ RULES:
       channel: "sms",
     });
 
-    // Send SMS reply via Twilio
-    await sendTwilioSms(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, fromPhone, finalResponse);
-
-    // Return empty TwiML (we sent the reply via API)
-    return new Response("<Response></Response>", {
+    return new Response(twimlMessageResponse(finalResponse), {
       headers: { ...corsHeaders, "Content-Type": "text/xml" },
     });
   } catch (e) {
     console.error("sms-webhook error:", e);
-    return new Response("<Response><Message>Something went wrong. Please try again.</Message></Response>", {
+    return new Response(twimlMessageResponse("Something went wrong. Please try again."), {
       headers: { ...corsHeaders, "Content-Type": "text/xml" },
     });
   }
 });
 
-async function sendTwilioSms(
-  accountSid: string,
-  authToken: string,
-  from: string,
-  to: string,
-  body: string
-) {
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: "Basic " + btoa(`${accountSid}:${authToken}`),
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({ To: to, From: from, Body: body }),
-  });
+function twimlMessageResponse(message: string) {
+  const safeMessage = escapeXml(message || "Sorry, I couldn't process your request.");
+  return `<Response><Message>${safeMessage}</Message></Response>`;
+}
 
-  if (!response.ok) {
-    const data = await response.json();
-    console.error("Twilio send error:", data);
-    throw new Error(`Twilio error: ${data.message}`);
-  }
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
