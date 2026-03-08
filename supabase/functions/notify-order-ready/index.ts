@@ -65,6 +65,12 @@ serve(async (req) => {
       );
     }
 
+    // Ensure phone is in E.164 format (prefix with + if missing)
+    let formattedPhone = customerPhone.trim();
+    if (!formattedPhone.startsWith("+")) {
+      formattedPhone = "+" + formattedPhone;
+    }
+
     const serviceName = SERVICE_LABELS[order.service_type] || order.service_type;
 
     // Generate personalized message via Lovable AI
