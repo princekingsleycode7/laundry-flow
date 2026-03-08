@@ -119,6 +119,7 @@ export type Database = {
       }
       sms_conversations: {
         Row: {
+          channel: string
           created_at: string
           customer_id: string
           id: string
@@ -128,6 +129,7 @@ export type Database = {
           role: string
         }
         Insert: {
+          channel?: string
           created_at?: string
           customer_id: string
           id?: string
@@ -137,6 +139,7 @@ export type Database = {
           role: string
         }
         Update: {
+          channel?: string
           created_at?: string
           customer_id?: string
           id?: string
