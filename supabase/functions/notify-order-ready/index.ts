@@ -115,7 +115,7 @@ serve(async (req) => {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        To: customerPhone,
+        To: formattedPhone,
         From: TWILIO_PHONE_NUMBER,
         Body: smsBody,
       }),
