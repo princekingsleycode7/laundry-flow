@@ -184,8 +184,6 @@ serve(async (req) => {
 
     // Strip "whatsapp:" prefix to get the plain phone number
     const fromPhone = rawFrom.replace(/^whatsapp:/, "");
-    const whatsappFrom = rawFrom.startsWith("whatsapp:") ? rawFrom : `whatsapp:${rawFrom}`;
-    const whatsappTo = `whatsapp:${TWILIO_PHONE_NUMBER}`;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
