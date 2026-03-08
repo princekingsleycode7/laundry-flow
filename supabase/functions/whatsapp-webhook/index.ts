@@ -311,40 +311,27 @@ RULES:
       channel: "whatsapp",
     });
 
-    // Send WhatsApp reply via Twilio
-    await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, `whatsapp:${TWILIO_PHONE_NUMBER}`, whatsappFrom, finalResponse);
-
-    return new Response("<Response></Response>", {
+    return new Response(twimlMessageResponse(finalResponse), {
       headers: { ...corsHeaders, "Content-Type": "text/xml" },
     });
   } catch (e) {
     console.error("whatsapp-webhook error:", e);
-    return new Response("<Response><Message>Something went wrong. Please try again.</Message></Response>", {
+    return new Response(twimlMessageResponse("Something went wrong. Please try again."), {
       headers: { ...corsHeaders, "Content-Type": "text/xml" },
     });
   }
 });
 
-async function sendTwilioMessage(
-  accountSid: string,
-  authToken: string,
-  from: string,
-  to: string,
-  body: string
-) {
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: "Basic " + btoa(`${accountSid}:${authToken}`),
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({ To: to, From: from, Body: body }),
-  });
+function twimlMessageResponse(message: string) {
+  const safeMessage = escapeXml(message || "Sorry, I couldn't process your request.");
+  return `<Response><Message>${safeMessage}</Message></Response>`;
+}
 
-  if (!response.ok) {
-    const data = await response.json();
-    console.error("Twilio send error:", data);
-    throw new Error(`Twilio error: ${data.message}`);
-  }
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
