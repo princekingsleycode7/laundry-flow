@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Phone, MessageCircle, CheckCircle, Clock, Package, Droplets, Wind } from "lucide-react";
+import { SmsConversation } from "@/components/SmsConversation";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
