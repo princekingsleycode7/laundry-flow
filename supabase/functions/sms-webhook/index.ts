@@ -205,9 +205,7 @@ serve(async (req) => {
     const customer = customers?.[0];
     if (!customer) {
       // Unknown customer — reply with a generic message
-      const replyMsg = "Hi! We couldn't find your account. Please contact us at the store for assistance.";
-      await sendTwilioSms(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, fromPhone, replyMsg);
-      return new Response("<Response></Response>", {
+      return new Response(twimlMessageResponse(replyMsg), {
         headers: { ...corsHeaders, "Content-Type": "text/xml" },
       });
     }
