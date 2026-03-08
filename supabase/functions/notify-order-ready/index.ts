@@ -65,6 +65,12 @@ serve(async (req) => {
       );
     }
 
+    // Ensure phone is in E.164 format (prefix with + if missing)
+    let formattedPhone = customerPhone.trim();
+    if (!formattedPhone.startsWith("+")) {
+      formattedPhone = "+" + formattedPhone;
+    }
+
     const serviceName = SERVICE_LABELS[order.service_type] || order.service_type;
 
     // Generate personalized message via Lovable AI
@@ -109,7 +115,7 @@ serve(async (req) => {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        To: customerPhone,
+        To: formattedPhone,
         From: TWILIO_PHONE_NUMBER,
         Body: smsBody,
       }),
